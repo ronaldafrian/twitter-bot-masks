@@ -1,0 +1,232 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "cronTime": "0 */5 * * *"
+      },
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [300, 200]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "query": "@your_bot_username has:mentions",
+        "returnAll": false,
+        "limit": 1
+      },
+      "name": "Twitter - Search Mentions",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 1,
+      "credentials": {
+        "twitterOAuth2": "X account"
+      },
+      "position": [460, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const tweets = items[0].json.results;\nif (!tweets || tweets.length === 0) return [];\n\nconst tweet = tweets[0];\nconst text = tweet.text;\nconst mentions = text.match(/@\\w+/g);\nif (!mentions || mentions.length < 2) return [];\n\nconst botHandle = \"@your_bot_username\";\nconst mentionedUser = mentions.find(m => m !== botHandle);\n\nreturn [{\n    json: {\n        tweet_id: tweet.id,\n        screen_name: mentionedUser.replace('@', ''),\n        raw_text: text\n    }\n}];"
+      },
+      "name": "Function - Extract Target Username",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [620, 200]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "user": "byUsername",
+        "username": "={{ $json['screen_name'] }}"
+      },
+      "name": "Twitter - Get User Profile",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 1,
+      "credentials": {
+        "twitterOAuth2": "X account"
+      },
+      "position": [780, 200]
+    },
+    {
+      "parameters": {
+        "values": {
+          "json": {
+            "profile_image_url": "={{ $json['data']['profile_image_url'] }}"
+          }
+        }
+      },
+      "name": "Set - Save PFP URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [940, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json['profile_image_url'] }}",
+        "options": {
+          "encoding": "binary"
+        }
+      },
+      "name": "HTTP Request - Download PFP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1100, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/images/edits ",
+        "headers": {
+          "Authorization": "Bearer {{ $credentials['openai_api_key'] }}"
+        },
+        "bodyParametersJson": {
+          "image": "={{ $binary.data }}",
+          "prompt": "Add a colorful mask to this character",
+          "n": "1",
+          "size": "1024x1024"
+        },
+        "options": {
+          "bodyContentType": "form-data"
+        }
+      },
+      "name": "HTTP Request - Send to DALL-E",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "credentials": {
+        "openai_api_key": "openai_api_key"
+      },
+      "position": [1260, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://upload.twitter.com/1.1/media/upload.json ",
+        "headers": {
+          "Authorization": "Bearer {{ $credentials['twitter_api_bearer_token'] }}"
+        },
+        "bodyParameters": {
+          "media": "={{ $binary.data }}"
+        },
+        "options": {
+          "bodyContentType": "form-data"
+        }
+      },
+      "name": "Twitter - Upload Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "credentials": {
+        "twitter_api_bearer_token": "twitter_oauth1_cred"
+      },
+      "position": [1420, 200]
+    },
+    {
+      "parameters": {
+        "operation": "post",
+        "text": "Ini adalah hasil edit dengan mask AI!",
+        "inReplyToTweetId": "={{ $json['tweet_id'] }}",
+        "mediaIds": "={{ $json['media_id_string'] }}"
+      },
+      "name": "Twitter - Reply with Image",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 1,
+      "credentials": {
+        "twitterOAuth2": "X account"
+      },
+      "position": [1580, 200]
+    }
+  ],
+  "connections": {
+    "Cron Trigger": {
+      "main": [
+        [
+          {
+            "node": "Twitter - Search Mentions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twitter - Search Mentions": {
+      "main": [
+        [
+          {
+            "node": "Function - Extract Target Username",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - Extract Target Username": {
+      "main": [
+        [
+          {
+            "node": "Twitter - Get User Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twitter - Get User Profile": {
+      "main": [
+        [
+          {
+            "node": "Set - Save PFP URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Save PFP URL": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Download PFP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Download PFP": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Send to DALL-E",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Send to DALL-E": {
+      "main": [
+        [
+          {
+            "node": "Twitter - Upload Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twitter - Upload Media": {
+      "main": [
+        [
+          {
+            "node": "Twitter - Reply with Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "tags": ["Twitter", "AI Edit", "Bot"]
+}
